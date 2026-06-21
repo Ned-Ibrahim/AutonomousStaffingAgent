@@ -1,63 +1,46 @@
 import { useEffect, useState } from 'react'
-import { supabase } from './lib/supabase'
+import { CompanyForm } from './components/CompanyForm'
+import { listCompanies } from './lib/companies'
+import type { CompanyContext } from '../supabase/functions/_shared/companies'
 import './App.css'
 
-type HealthResult =
-  | { state: 'loading' }
-  | { state: 'ok'; status: string; checkedAt: string }
-  | { state: 'error'; message: string }
-
 function App() {
-  const [health, setHealth] = useState<HealthResult>({ state: 'loading' })
+  const [companies, setCompanies] = useState<CompanyContext[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Walking-skeleton check: the browser calls a Supabase Edge Function,
-    // which reads a row from Postgres and returns it. Proves the full pipe
-    // (frontend -> Edge Function -> database) works end to end, deployed.
-    supabase.functions
-      .invoke('health')
-      .then(({ data, error }) => {
-        if (error) throw error
-        setHealth({
-          state: 'ok',
-          status: data.db.status,
-          checkedAt: data.db.created_at,
-        })
-      })
-      .catch((e: unknown) =>
-        setHealth({ state: 'error', message: e instanceof Error ? e.message : String(e) }),
-      )
+    listCompanies()
+      .then(setCompanies)
+      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)))
   }, [])
 
   return (
     <main className="shell">
-      <h1>Autonomous Staffing Agent</h1>
-      <p className="tagline">Walking skeleton — frontend → Edge Function → database</p>
+      <header>
+        <h1>Autonomous Staffing Agent</h1>
+        <p className="tagline">Capture a company's context to configure its recruiting agent.</p>
+      </header>
 
-      <section className="card" aria-live="polite">
-        {health.state === 'loading' && <p>Checking the pipe…</p>}
-        {health.state === 'ok' && (
-          <>
-            <p className="badge ok">● pipe healthy</p>
-            <dl>
-              <dt>DB status</dt>
-              <dd>{health.status}</dd>
-              <dt>Row created</dt>
-              <dd>{new Date(health.checkedAt).toLocaleString()}</dd>
-            </dl>
-          </>
-        )}
-        {health.state === 'error' && (
-          <>
-            <p className="badge err">● pipe down</p>
-            <pre className="err-msg">{health.message}</pre>
-            <p className="hint">
-              Check that <code>VITE_SUPABASE_URL</code> / <code>VITE_SUPABASE_ANON_KEY</code> are set
-              and the <code>health</code> function is deployed.
-            </p>
-          </>
-        )}
-      </section>
+      <div className="layout">
+        <CompanyForm onSaved={(c) => setCompanies((prev) => [c, ...prev])} />
+
+        <section className="card">
+          <h2>Saved companies</h2>
+          {loadError && <p className="badge err">{loadError}</p>}
+          {!loadError && companies.length === 0 && <p className="muted">None yet.</p>}
+          <ul className="company-list">
+            {companies.map((c) => (
+              <li key={c.id}>
+                <div className="company-head">
+                  <strong>{c.name}</strong>
+                  <span className="tone-pill">{c.tone}</span>
+                </div>
+                <p className="muted">{c.one_liner}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
     </main>
   )
 }
