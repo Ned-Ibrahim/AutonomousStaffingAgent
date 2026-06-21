@@ -1,0 +1,7 @@
+# Minimal Supabase config. `project_id` is a local label; the real project is
+# bound via `npx supabase link --project-ref <ref>`.
+project_id = "autonomous-staffing-agent"
+
+# The health function is public (no auth) — v1 of the product has no auth.
+[functions.health]
+verify_jwt = false
