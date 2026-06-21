@@ -2,6 +2,9 @@
 # bound via `npx supabase link --project-ref <ref>`.
 project_id = "autonomous-staffing-agent"
 
-# The health function is public (no auth) — v1 of the product has no auth.
+# Functions are public (no auth) — v1 of the product has no auth.
 [functions.health]
+verify_jwt = false
+
+[functions.companies]
 verify_jwt = false

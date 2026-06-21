@@ -1,59 +1,125 @@
 .shell {
-  max-width: 560px;
+  max-width: 920px;
   margin: 0 auto;
-  padding: 64px 24px;
+  padding: 48px 24px;
+}
+
+h1 {
+  margin: 0 0 4px;
+}
+.tagline {
+  color: var(--text);
+  margin: 0 0 24px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 760px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.card h2 {
+  margin: 0 0 16px;
+  font-size: 18px;
+  color: var(--text-h);
+}
+
+/* form */
+.form {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-
-.tagline {
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
   color: var(--text);
-  margin: 0;
 }
-
-.card {
-  margin-top: 16px;
-  padding: 24px;
+.req {
+  color: var(--err);
+}
+.form input,
+.form select,
+.form textarea {
+  font: inherit;
+  font-size: 15px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+}
+.form textarea {
+  resize: vertical;
+}
+.form button {
+  font: inherit;
+  font-weight: 600;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--text-h);
+  color: var(--bg);
+  cursor: pointer;
+}
+.form button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .badge {
   font-weight: 600;
-  margin: 0 0 12px;
-}
-.badge.ok {
-  color: var(--ok);
+  margin: 0;
 }
 .badge.err {
   color: var(--err);
 }
-
-dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 16px;
-  margin: 0;
-}
-dt {
+.muted {
   color: var(--text);
-}
-dd {
-  margin: 0;
-  color: var(--text-h);
-  font-family: var(--mono);
+  margin: 4px 0 0;
 }
 
-.err-msg {
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: var(--code-bg);
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 14px;
+/* saved list */
+.company-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
-.hint {
-  margin-top: 12px;
-  font-size: 14px;
+.company-list li {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+.company-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.company-head strong {
+  color: var(--text-h);
+}
+.tone-pill {
+  font-size: 12px;
+  font-family: var(--mono);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--code-bg);
+  color: var(--text-h);
 }
