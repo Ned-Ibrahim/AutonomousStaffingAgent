@@ -1,5 +1,7 @@
 {
-  "imports": {
-    "@supabase/supabase-js": "jsr:@supabase/supabase-js@2"
+  "lint": {
+    "rules": {
+      "exclude": ["no-import-prefix"]
+    }
   }
 }
