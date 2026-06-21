@@ -123,3 +123,120 @@ h1 {
   background: var(--code-bg);
   color: var(--text-h);
 }
+
+/* generate button */
+.generate-btn {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+.generate-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* persona panel */
+.persona {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--code-bg);
+}
+.persona-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text);
+}
+.conf-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  text-transform: capitalize;
+}
+.conf-high {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--ok);
+}
+.conf-med {
+  background: color-mix(in srgb, #d97706 20%, transparent);
+  color: #b45309;
+}
+.conf-low {
+  background: color-mix(in srgb, var(--err) 16%, transparent);
+  color: var(--err);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-h);
+}
+.persona-style {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--text-h);
+}
+.persona-block {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.bullets {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  color: var(--text-h);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.facts-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 520px) {
+  .facts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.facts-grid .section-label {
+  display: block;
+  margin-bottom: 5px;
+}
+.small {
+  font-size: 13px;
+}
+.persona-rationale {
+  margin: 12px 0 0;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text);
+}
