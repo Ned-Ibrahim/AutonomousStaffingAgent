@@ -233,6 +233,7 @@ function buildInterpretPrompt(bundle: InterpretBundle): { system: string; user: 
     'Rules:',
     '- Separate facts the company actually gave you (knownFacts) from your own reasonable guesses (inferredAssumptions). Never present an assumption as a fact.',
     '- Self-check grounding honestly: each grounding flag is true only if it genuinely holds; passed is true only if the message you would send stays inside company context, voice, and boundaries.',
+    '- If the candidate asks for something the company context does not contain (e.g. exact compensation, equity, start dates), do NOT plan to invent it. Choose ask-for-info, suggest-next-step, or escalate-to-human, and set avoidsUnsupportedClaims honestly — the writer must offer a follow-up, not a fabricated number.',
     '- Pick nextAction from the allowed set; justify it in actionRationale weighed against the recruiting goal.',
     '- Set humanRecommended/escalate-to-human or stop when continuing would be inappropriate. Knowing when NOT to act is part of the job.',
     turnZero
@@ -414,13 +415,31 @@ function buildWritePrompt(args: WriteArgs): { system: string; user: string; text
   const system = [
     'You write the candidate-facing message for an autonomous recruiting agent. The decision has already',
     'been made — your only job is to phrase it well, in the company voice, inside the company boundaries.',
-    'Do not change the chosen action. Do not invent facts the company did not provide.',
+    'Do not change the chosen action.',
     '',
-    'Company:',
-    JSON.stringify({ name: company.name, one_liner: company.one_liner, tone: company.tone }),
+    'Company context (this is ALL you know about the company — ground every claim in it):',
+    JSON.stringify({
+      name: company.name,
+      one_liner: company.one_liner,
+      about: company.about,
+      culture_values: company.culture_values,
+      hiring_needs: company.hiring_needs,
+      candidate_profiles: company.candidate_profiles,
+      recruiting_process: company.recruiting_process,
+      recruiting_goals: company.recruiting_goals,
+      tone: company.tone,
+    }),
     '',
     'Voice and boundaries:',
     JSON.stringify(persona),
+    '',
+    'GROUNDING — this is critical:',
+    '- State ONLY facts present in the company context above. Do NOT invent specifics the context does not',
+    '  give you — no compensation, salary, equity, benefits, perks, headcount, funding, dates, locations,',
+    '  team names, or numbers unless they appear in the context.',
+    '- If the candidate asks for something not in the context (e.g. comp), do NOT make it up. Say honestly',
+    '  that you can connect them with the team / follow up with specifics, and steer back to what you do know.',
+    '- Prefer fewer, true sentences over a fuller message padded with invented detail.',
     '',
     'Output ONLY the message text the candidate should receive — no preamble, no quotes, no markdown.',
   ].join('\n')
@@ -428,6 +447,10 @@ function buildWritePrompt(args: WriteArgs): { system: string; user: string; text
   const user = JSON.stringify({
     decided_action: decision.nextAction,
     action_rationale: decision.actionRationale,
+    // Facts the agent already separated as actually-known vs. its own guesses. Only
+    // the known facts (plus the company context) may be stated as fact.
+    known_facts: decision.knownVsInferred.knownFacts,
+    inferred_assumptions_do_not_state_as_fact: decision.knownVsInferred.inferredAssumptions,
     candidate: { name: candidate.name, role: candidate.role, context: candidate.context },
     conversation_so_far: history,
     instruction: turnZero
