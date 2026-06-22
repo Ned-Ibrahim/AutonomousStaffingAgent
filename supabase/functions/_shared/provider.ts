@@ -23,7 +23,15 @@ export function createOpenAIProvider(apiKey: string, opts: OpenAIOptions = {}): 
   const endpoint = opts.endpoint ?? 'https://api.openai.com/v1/chat/completions'
 
   return {
-    async complete({ system, user }) {
+    async complete({ system, user, schema, text }) {
+      // Shape the response: strict structured output (schema) wins; then plain
+      // text; otherwise a JSON object (the historical default).
+      const response_format = schema
+        ? { type: 'json_schema', json_schema: { name: schema.name, strict: true, schema: schema.schema } }
+        : text
+          ? undefined
+          : { type: 'json_object' }
+
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -33,7 +41,7 @@ export function createOpenAIProvider(apiKey: string, opts: OpenAIOptions = {}): 
         body: JSON.stringify({
           model,
           temperature,
-          response_format: { type: 'json_object' },
+          ...(response_format ? { response_format } : {}),
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: user },
@@ -47,11 +55,11 @@ export function createOpenAIProvider(apiKey: string, opts: OpenAIOptions = {}): 
       }
 
       const data = await res.json()
-      const text = data?.choices?.[0]?.message?.content
-      if (typeof text !== 'string' || text.trim().length === 0) {
+      const content = data?.choices?.[0]?.message?.content
+      if (typeof content !== 'string' || content.trim().length === 0) {
         throw new Error('OpenAI returned an empty completion')
       }
-      return text
+      return content
     },
   }
 }

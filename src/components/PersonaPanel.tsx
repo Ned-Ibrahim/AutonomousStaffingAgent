@@ -1,32 +1,13 @@
-import type { AgentConfig, Confidence } from '../../supabase/functions/_shared/personality'
+import { Badge, ConfidenceBadge, KeyValueList, SectionTitle } from '@/components/ui'
+import type { AgentConfig } from '@/lib/types'
 
-const CONFIDENCE_CLASS: Record<Confidence, string> = {
-  high: 'conf-high',
-  medium: 'conf-med',
-  low: 'conf-low',
-}
-
-function Chips({ items }: { items: string[] }) {
-  if (!items.length) return null
+function Block({ title, items, empty }: { title: string; items: string[]; empty?: string }) {
+  if (!items.length && !empty) return null
   return (
-    <div className="chips">
-      {items.map((it, i) => (
-        <span key={i} className="chip">
-          {it}
-        </span>
-      ))}
+    <div>
+      <SectionTitle className="mb-1.5">{title}</SectionTitle>
+      {items.length ? <KeyValueList items={items} /> : <p className="text-sm text-ink-400">{empty}</p>}
     </div>
-  )
-}
-
-function Bullets({ items, empty }: { items: string[]; empty?: string }) {
-  if (!items.length) return empty ? <p className="muted small">{empty}</p> : null
-  return (
-    <ul className="bullets">
-      {items.map((it, i) => (
-        <li key={i}>{it}</li>
-      ))}
-    </ul>
   )
 }
 
@@ -36,42 +17,34 @@ export function PersonaPanel({ config }: { config: AgentConfig }) {
   const { persona, confidence, assumptions, rationale } = config
 
   return (
-    <div className="persona">
-      <div className="persona-top">
-        <span className="section-label">Inferred persona</span>
-        <span className={`conf-badge ${CONFIDENCE_CLASS[confidence]}`}>{confidence} confidence</span>
+    <div className="mt-3 flex flex-col gap-3 rounded-xl border border-ink-200/70 bg-ink-50/60 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <SectionTitle>Inferred persona</SectionTitle>
+        <ConfidenceBadge value={confidence} />
       </div>
 
-      <Chips items={persona.traits} />
-      {persona.language_style && <p className="persona-style">{persona.language_style}</p>}
-
-      <div className="persona-block">
-        <span className="section-label">Voice rules</span>
-        <Bullets items={persona.voice_rules} />
-      </div>
-
-      <div className="persona-block">
-        <span className="section-label">Avoid</span>
-        <Bullets items={persona.approaches_to_avoid} />
-      </div>
-
-      <div className="persona-block">
-        <span className="section-label">Recruiting guidelines</span>
-        <Bullets items={persona.recruiting_guidelines} />
-      </div>
-
-      <div className="facts-grid">
-        <div>
-          <span className="section-label">Known facts</span>
-          <Bullets items={assumptions.known_facts} empty="None recorded" />
+      {persona.traits.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {persona.traits.map((t, i) => (
+            <Badge key={i} tone="brand" className="capitalize">
+              {t}
+            </Badge>
+          ))}
         </div>
-        <div>
-          <span className="section-label">Inferred assumptions</span>
-          <Bullets items={assumptions.inferred_assumptions} empty="None" />
-        </div>
+      )}
+
+      {persona.language_style && <p className="text-sm leading-relaxed text-ink-600">{persona.language_style}</p>}
+
+      <Block title="Voice rules" items={persona.voice_rules} />
+      <Block title="Avoid" items={persona.approaches_to_avoid} />
+      <Block title="Recruiting guidelines" items={persona.recruiting_guidelines} />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Block title="Known facts" items={assumptions.known_facts} empty="None recorded" />
+        <Block title="Inferred assumptions" items={assumptions.inferred_assumptions} empty="None" />
       </div>
 
-      {rationale && <p className="persona-rationale">{rationale}</p>}
+      {rationale && <p className="text-xs italic leading-relaxed text-ink-400">{rationale}</p>}
     </div>
   )
 }

@@ -53,7 +53,17 @@ export type AgentConfig = NewAgentConfig & { id: string; created_at: string }
  * default rather than failing.
  */
 export interface ProviderClient {
-  complete(req: { system: string; user: string }): Promise<string>
+  complete(req: {
+    system: string
+    user: string
+    /**
+     * Optional response shaping. With `schema`, the provider requests strict
+     * structured output conforming to it. With `text: true`, plain natural-language
+     * output (no JSON). With neither, a JSON object (the default this module relies on).
+     */
+    schema?: { name: string; schema: Record<string, unknown> }
+    text?: boolean
+  }): Promise<string>
 }
 
 // --- inference -------------------------------------------------------------
