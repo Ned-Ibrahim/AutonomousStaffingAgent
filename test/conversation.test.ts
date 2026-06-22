@@ -543,6 +543,26 @@ describe('makeMessageWriter', () => {
     expect(out).toContain('Acme Rockets')
     expect(out).toContain('Dana Lopez')
   })
+
+  it('tells the writer to sign as the recruiter when a name is given, and forbids placeholders', async () => {
+    const { provider, calls } = recordingProvider('Hi Dana.')
+    await makeMessageWriter(provider).write({ ...writeArgs(), recruiterName: 'Sam Rivera' })
+    expect(calls[0].system).toContain('Sam Rivera')
+    expect(calls[0].system).toContain('[Your Name]')
+    expect(calls[0].system.toLowerCase()).toContain('never output a placeholder')
+  })
+
+  it('tells the writer to sign as the company (no placeholder) when no recruiter name is given', async () => {
+    const { provider, calls } = recordingProvider('Hi Dana.')
+    await makeMessageWriter(provider).write(writeArgs())
+    expect(calls[0].system).toContain('Acme Rockets team')
+    expect(calls[0].system.toLowerCase()).toContain('never output a placeholder')
+  })
+
+  it('appends the recruiter name to the generic opener fallback', async () => {
+    const out = await makeMessageWriter(null).write({ ...writeArgs(), recruiterName: 'Sam Rivera' })
+    expect(out).toContain('Sam Rivera')
+  })
 })
 
 // --- SessionReducer (slice-005 headline) -----------------------------------
