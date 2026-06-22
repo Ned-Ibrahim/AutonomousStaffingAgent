@@ -53,6 +53,35 @@ Deno.serve(async (req: Request) => {
   try {
     if (req.method === 'POST') {
       const body = await req.json().catch(() => ({}))
+
+      // Reply turn: an existing conversation + a new candidate message.
+      const conversationId = typeof body?.conversation_id === 'string' ? body.conversation_id : ''
+      if (conversationId) {
+        const candidateMessage =
+          typeof body?.candidate_message === 'string' ? body.candidate_message.trim() : ''
+        if (!candidateMessage) return json({ error: 'candidate_message is required' }, 400)
+
+        const conversation = await conversationsPort.getConversation(conversationId)
+        if (!conversation) return json({ error: 'conversation not found' }, 404)
+        if (conversation.status === 'stopped') {
+          return json({ error: 'conversation has ended' }, 409)
+        }
+
+        const company = await companies.selectById(conversation.company_id)
+        if (!company) return json({ error: 'company not found' }, 404)
+        const config = await agentConfigs.selectLatestByCompany(conversation.company_id)
+        if (!config) return json({ error: 'no agent configured for this company' }, 409)
+
+        const result = await engine.replyTurn({
+          conversationId,
+          company,
+          persona: config.persona,
+          candidateMessage,
+        })
+        return json(result, 201)
+      }
+
+      // Opening turn: a company + a candidate to reach out to.
       const companyId = typeof body?.company_id === 'string' ? body.company_id : ''
       if (!companyId) return json({ error: 'company_id is required' }, 400)
 
