@@ -30,6 +30,26 @@ const PROSE_FIELDS: { key: keyof CompanyInput; label: string }[] = [
   { key: 'recruiting_goals', label: 'Recruiting goals' },
 ]
 
+function Field({
+  label,
+  required,
+  children,
+}: {
+  label: string
+  required?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium text-ink-700">
+        {label}
+        {required && <span className="text-accent-500"> *</span>}
+      </span>
+      {children}
+    </label>
+  )
+}
+
 export function CompanyForm({ onSaved }: { onSaved: (company: CompanyContext) => void }) {
   const [form, setForm] = useState<FormState>(EMPTY)
   const [submitting, setSubmitting] = useState(false)
@@ -59,26 +79,27 @@ export function CompanyForm({ onSaved }: { onSaved: (company: CompanyContext) =>
   }
 
   return (
-    <form className="form card" onSubmit={handleSubmit}>
-      <h2>New company</h2>
+    <form className="card flex flex-col gap-4 p-5" onSubmit={handleSubmit}>
+      <div>
+        <h2 className="text-base font-semibold text-ink-900">New company</h2>
+        <p className="hint">Capture a company's context. Required: name, one-liner, tone.</p>
+      </div>
 
-      <label>
-        Name <span className="req">*</span>
-        <input value={form.name} onChange={(e) => set('name', e.target.value)} />
-      </label>
+      <Field label="Name" required>
+        <input className="input" value={form.name} onChange={(e) => set('name', e.target.value)} />
+      </Field>
 
-      <label>
-        One-liner <span className="req">*</span>
+      <Field label="One-liner" required>
         <input
+          className="input"
           value={form.one_liner}
           onChange={(e) => set('one_liner', e.target.value)}
           placeholder="What the company does, in a sentence"
         />
-      </label>
+      </Field>
 
-      <label>
-        Tone <span className="req">*</span>
-        <select value={form.tone} onChange={(e) => set('tone', e.target.value)}>
+      <Field label="Tone" required>
+        <select className="input capitalize" value={form.tone} onChange={(e) => set('tone', e.target.value)}>
           <option value="">Select a tone…</option>
           {TONE_VALUES.map((t) => (
             <option key={t} value={t}>
@@ -86,22 +107,22 @@ export function CompanyForm({ onSaved }: { onSaved: (company: CompanyContext) =>
             </option>
           ))}
         </select>
-      </label>
+      </Field>
 
       {PROSE_FIELDS.map(({ key, label }) => (
-        <label key={key}>
-          {label}
+        <Field key={key} label={label}>
           <textarea
+            className="input min-h-[64px]"
             rows={2}
             value={form[key]}
             onChange={(e) => set(key, e.target.value)}
           />
-        </label>
+        </Field>
       ))}
 
-      {error && <p className="badge err">{error}</p>}
+      {error && <span className="chip border border-red-200 bg-red-50 text-red-600">{error}</span>}
 
-      <button type="submit" disabled={submitting}>
+      <button type="submit" className="btn btn-primary self-start" disabled={submitting}>
         {submitting ? 'Saving…' : 'Save company'}
       </button>
     </form>
