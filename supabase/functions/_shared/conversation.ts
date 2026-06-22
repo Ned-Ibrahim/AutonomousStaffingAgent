@@ -482,11 +482,17 @@ export interface NewMessage {
   decision_data: AgentDecision | null
 }
 
+export interface ConversationUpdate {
+  status: ConversationStatus
+  session_state: SessionState
+}
+
 export interface ConversationsPort {
   insertConversation(c: NewConversation): Promise<Conversation>
   insertMessage(m: NewMessage): Promise<Message>
   getConversation(id: string): Promise<Conversation | null>
   listMessages(conversationId: string): Promise<Message[]>
+  updateConversation(id: string, patch: ConversationUpdate): Promise<Conversation>
 }
 
 export function sessionFromDecision(d: AgentDecision): SessionState {
@@ -498,6 +504,24 @@ export function sessionFromDecision(d: AgentDecision): SessionState {
     nextAction: d.nextAction,
     status: d.status,
   }
+}
+
+/**
+ * SessionReducer (the slice-005 headline). Pure function: derive the next session
+ * snapshot from the previous one and the new decision. This is the conversation's
+ * running memory — every turn folds the latest decision into it.
+ *
+ * Rules:
+ *   - Turn 0 (no prior session): the session IS the first decision.
+ *   - A 'stopped' conversation is terminal — once ended, later turns cannot silently
+ *     reopen it; the snapshot is frozen. (Defensive: the UI also stops sending.)
+ *   - Otherwise the new decision wins for every field — stage may advance, intent /
+ *     sentiment / engagement / nextAction / status all reflect the latest read.
+ */
+export function reduceSession(prev: SessionState | null, decision: AgentDecision): SessionState {
+  if (!prev) return sessionFromDecision(decision)
+  if (prev.status === 'stopped') return prev
+  return sessionFromDecision(decision)
 }
 
 // --- orchestrator: one opening turn ----------------------------------------
@@ -516,8 +540,31 @@ export interface OpeningTurnResult {
   grounding: GroundingOutcome
 }
 
+export interface ReplyTurnInput {
+  conversationId: string
+  company: CompanyContext
+  persona: Persona
+  /** The candidate's new message that this turn responds to. */
+  candidateMessage: string
+}
+
+export interface ReplyTurnResult {
+  conversation: Conversation
+  candidateMessage: Message
+  agentMessage: Message
+  decision: AgentDecision
+  grounding: GroundingOutcome
+  session: SessionState
+}
+
 export interface ConversationEngine {
   openingTurn(input: OpeningTurnInput): Promise<OpeningTurnResult>
+  replyTurn(input: ReplyTurnInput): Promise<ReplyTurnResult>
+}
+
+/** Narrow a stored session_state (may be `{}` on a fresh row) to a usable SessionState. */
+function asSessionState(raw: SessionState | Record<string, never> | null | undefined): SessionState | null {
+  return raw && typeof raw === 'object' && 'stage' in raw ? (raw as SessionState) : null
 }
 
 /**
@@ -561,6 +608,62 @@ export function makeConversationEngine(deps: {
       })
 
       return { conversation, message, decision, grounding }
+    },
+
+    async replyTurn({ conversationId, company, persona, candidateMessage }) {
+      const existing = await port.getConversation(conversationId)
+      if (!existing) throw new Error('conversation not found')
+
+      const prior = await port.listMessages(conversationId)
+      const history = prior.map((m) => ({ role: m.role, content: m.content }))
+      const candidate: CandidateInput = {
+        name: existing.candidate_name,
+        role: existing.candidate_role,
+        context: existing.candidate_context,
+      }
+
+      // Record the candidate's message first — it is part of the conversation
+      // whether or not the agent ends up replying.
+      const candidateRow = await port.insertMessage({
+        conversation_id: conversationId,
+        role: 'candidate',
+        content: candidateMessage,
+        decision_data: null,
+      })
+
+      // Decide, then write — same two-call loop as turn 0, now reasoning over the
+      // reply in the context of everything said so far.
+      const decision = await decisionEngine.interpret({
+        company,
+        persona,
+        candidate,
+        history,
+        latestCandidateMessage: candidateMessage,
+      })
+      const grounding = checkGrounding(decision)
+      const content = await messageWriter.write({
+        decision,
+        persona,
+        company,
+        candidate,
+        history: [...history, { role: 'candidate', content: candidateMessage }],
+      })
+
+      const agentRow = await port.insertMessage({
+        conversation_id: conversationId,
+        role: 'agent',
+        content,
+        decision_data: decision,
+      })
+
+      // Fold the decision into the running session memory.
+      const session = reduceSession(asSessionState(existing.session_state), decision)
+      const conversation = await port.updateConversation(conversationId, {
+        status: session.status,
+        session_state: session,
+      })
+
+      return { conversation, candidateMessage: candidateRow, agentMessage: agentRow, decision, grounding, session }
     },
   }
 }
@@ -609,6 +712,16 @@ export function createSupabaseConversationsPort(client: SupabaseLike): Conversat
         .order('created_at', { ascending: true })
       if (error) throw new Error(error.message)
       return (data as Message[]) ?? []
+    },
+    async updateConversation(id, patch) {
+      const { data, error } = await client
+        .from('conversations')
+        .update(patch)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw new Error(error.message)
+      return data as Conversation
     },
   }
 }

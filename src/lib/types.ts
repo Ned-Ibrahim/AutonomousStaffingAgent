@@ -16,6 +16,7 @@ export type {
   CandidateInput,
   MessageRole,
   OpeningTurnResult,
+  ReplyTurnResult,
   NewConversation,
   NewMessage,
 } from '../../supabase/functions/_shared/conversation'

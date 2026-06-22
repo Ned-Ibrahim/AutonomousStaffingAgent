@@ -9,11 +9,13 @@ import {
   makeDecisionEngine,
   makeMessageWriter,
   parseDecision,
+  reduceSession,
   sessionFromDecision,
   type AgentDecision,
   type CandidateInput,
   type Conversation,
   type ConversationsPort,
+  type ConversationUpdate,
   type DecisionEngine,
   type InterpretBundle,
   type Message,
@@ -21,6 +23,7 @@ import {
   type NewConversation,
   type NewMessage,
   type OpeningTurnInput,
+  type SessionState,
 } from '../supabase/functions/_shared/conversation'
 
 // --- fixtures --------------------------------------------------------------
@@ -141,6 +144,12 @@ function fakePort(): ConversationsPort & {
     },
     async listMessages(conversationId: string) {
       return messages.filter((m) => m.conversation_id === conversationId)
+    },
+    async updateConversation(id: string, patch: ConversationUpdate) {
+      const row = conversations.find((c) => c.id === id)
+      if (!row) throw new Error('conversation not found')
+      Object.assign(row, patch)
+      return row
     },
   }
 }
@@ -533,5 +542,211 @@ describe('makeMessageWriter', () => {
     const out = await makeMessageWriter(null).write(writeArgs())
     expect(out).toContain('Acme Rockets')
     expect(out).toContain('Dana Lopez')
+  })
+})
+
+// --- SessionReducer (slice-005 headline) -----------------------------------
+
+describe('reduceSession', () => {
+  const session = (over: Partial<SessionState> = {}): SessionState => ({
+    stage: 'initial-outreach',
+    intent: 'curious',
+    sentiment: 'positive',
+    engagement: 'high',
+    nextAction: 'continue-engagement',
+    status: 'active',
+    ...over,
+  })
+
+  it('turn 0 (no prior session) returns the session derived from the decision', () => {
+    const d = goodDecision()
+    expect(reduceSession(null, d)).toEqual(sessionFromDecision(d))
+  })
+
+  it('folds the new decision over the previous session (decision wins)', () => {
+    const prev = session()
+    const d = goodDecision({
+      stage: 'screening',
+      intent: 'interested',
+      sentiment: 'mixed',
+      engagement: 'medium',
+      nextAction: 'answer-question',
+      status: 'active',
+    })
+    const next = reduceSession(prev, d)
+    expect(next).toEqual({
+      stage: 'screening',
+      intent: 'interested',
+      sentiment: 'mixed',
+      engagement: 'medium',
+      nextAction: 'answer-question',
+      status: 'active',
+    })
+  })
+
+  it('advances the stage as the conversation progresses', () => {
+    const next = reduceSession(session({ stage: 'initial-outreach' }), goodDecision({ stage: 'scheduling' }))
+    expect(next.stage).toBe('scheduling')
+  })
+
+  it('lets the status transition active -> escalated when the decision escalates', () => {
+    const next = reduceSession(session({ status: 'active' }), goodDecision({ status: 'escalated' }))
+    expect(next.status).toBe('escalated')
+  })
+
+  it('treats a stopped conversation as terminal: a later decision cannot reopen it', () => {
+    const prev = session({ status: 'stopped', stage: 'closed' })
+    const next = reduceSession(prev, goodDecision({ status: 'active', stage: 'initial-outreach' }))
+    expect(next).toBe(prev) // frozen, unchanged
+    expect(next.status).toBe('stopped')
+  })
+
+  it('is pure — it does not mutate the previous session', () => {
+    const prev = session()
+    const snapshot = { ...prev }
+    reduceSession(prev, goodDecision({ stage: 'screening', status: 'paused' }))
+    expect(prev).toEqual(snapshot)
+  })
+})
+
+// --- Orchestrator: replyTurn -----------------------------------------------
+
+describe('makeConversationEngine.replyTurn', () => {
+  const fakeDecisionEngine = (decision: AgentDecision): DecisionEngine => ({
+    async interpret() {
+      return decision
+    },
+  })
+  const fakeWriter = (content: string): MessageWriter => ({
+    async write() {
+      return content
+    },
+  })
+
+  /** Seed a port with one opening turn so there is a conversation to reply into. */
+  async function seeded(openingDecision = goodDecision()) {
+    const port = fakePort()
+    const engine = makeConversationEngine({
+      decisionEngine: fakeDecisionEngine(openingDecision),
+      messageWriter: fakeWriter('Hi Dana, we build rockets.'),
+      port,
+    })
+    const opened = await engine.openingTurn(openingInput())
+    return { port, opened }
+  }
+
+  it('persists the candidate message and the agent reply (two new messages)', async () => {
+    const { port, opened } = await seeded()
+    const engine = makeConversationEngine({
+      decisionEngine: fakeDecisionEngine(goodDecision({ intent: 'interested' })),
+      messageWriter: fakeWriter('Great — here are the details.'),
+      port,
+    })
+
+    const res = await engine.replyTurn({
+      conversationId: opened.conversation.id,
+      company: company(),
+      persona: persona(),
+      candidateMessage: 'Tell me more.',
+    })
+
+    expect(port.messages).toHaveLength(3) // opening agent + candidate + agent reply
+    expect(res.candidateMessage.role).toBe('candidate')
+    expect(res.candidateMessage.content).toBe('Tell me more.')
+    expect(res.candidateMessage.decision_data).toBeNull()
+    expect(res.agentMessage.role).toBe('agent')
+    expect(res.agentMessage.content).toBe('Great — here are the details.')
+    expect(res.agentMessage.decision_data).toEqual(goodDecision({ intent: 'interested' }))
+  })
+
+  it('updates the conversation session_state via the reducer and persists it', async () => {
+    const { port, opened } = await seeded()
+    const replyDecision = goodDecision({ stage: 'screening', intent: 'interested', status: 'active' })
+    const engine = makeConversationEngine({
+      decisionEngine: fakeDecisionEngine(replyDecision),
+      messageWriter: fakeWriter('…'),
+      port,
+    })
+
+    const res = await engine.replyTurn({
+      conversationId: opened.conversation.id,
+      company: company(),
+      persona: persona(),
+      candidateMessage: 'Sounds interesting.',
+    })
+
+    const expected = reduceSession(sessionFromDecision(goodDecision()), replyDecision)
+    expect(res.session).toEqual(expected)
+    expect(res.session.stage).toBe('screening')
+    // persisted on the conversation row
+    expect((await port.getConversation(opened.conversation.id))?.session_state).toEqual(expected)
+  })
+
+  it('feeds the prior history into the interpret call (not a turn-0 opening)', async () => {
+    const { port, opened } = await seeded()
+    const { provider, calls } = recordingProvider([
+      JSON.stringify(goodDecision({ intent: 'interested' })),
+      'Glad to hear it.',
+    ])
+    const engine = makeConversationEngineFromProvider(provider, port)
+
+    await engine.replyTurn({
+      conversationId: opened.conversation.id,
+      company: company(),
+      persona: persona(),
+      candidateMessage: "I'm interested.",
+    })
+
+    // interpret (call 0) sees the candidate's latest message and is NOT turn 0
+    const interpretUser = JSON.parse(calls[0].user) as {
+      turn_0_opening_outreach: boolean
+      candidate_latest_message: string | null
+      conversation_so_far: unknown[]
+    }
+    expect(interpretUser.turn_0_opening_outreach).toBe(false)
+    expect(interpretUser.candidate_latest_message).toBe("I'm interested.")
+    expect(interpretUser.conversation_so_far).toHaveLength(1) // the opening agent message
+    // exactly two model calls per turn
+    expect(calls).toHaveLength(2)
+    expect(calls[0].schema?.name).toBe('agent_decision')
+    expect(calls[1].text).toBe(true)
+  })
+
+  it('carries a withheld grounding outcome through the reply turn', async () => {
+    const { port, opened } = await seeded()
+    const failing = goodDecision({ grounding: { ...goodDecision().grounding, passed: false }, status: 'escalated' })
+    const engine = makeConversationEngine({
+      decisionEngine: fakeDecisionEngine(failing),
+      messageWriter: fakeWriter('needs review'),
+      port,
+    })
+
+    const res = await engine.replyTurn({
+      conversationId: opened.conversation.id,
+      company: company(),
+      persona: persona(),
+      candidateMessage: 'Can you guarantee a signing bonus?',
+    })
+
+    expect(res.grounding.proceed).toBe(false)
+    expect(res.grounding.annotate).toBe(true)
+    expect(res.conversation.status).toBe('escalated')
+  })
+
+  it('throws when the conversation does not exist', async () => {
+    const port = fakePort()
+    const engine = makeConversationEngine({
+      decisionEngine: fakeDecisionEngine(goodDecision()),
+      messageWriter: fakeWriter('…'),
+      port,
+    })
+    await expect(
+      engine.replyTurn({
+        conversationId: 'nope',
+        company: company(),
+        persona: persona(),
+        candidateMessage: 'hi',
+      }),
+    ).rejects.toThrow(/not found/i)
   })
 })

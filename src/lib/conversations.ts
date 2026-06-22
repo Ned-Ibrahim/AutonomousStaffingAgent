@@ -5,6 +5,7 @@ import type {
   Conversation,
   Message,
   OpeningTurnResult,
+  ReplyTurnResult,
 } from '../../supabase/functions/_shared/conversation'
 
 /** Read a useful message out of a non-2xx Edge Function response. */
@@ -26,6 +27,18 @@ export async function startConversation(
   })
   if (error) throw new Error(await describeError(error))
   return data as OpeningTurnResult
+}
+
+/** Send a candidate reply into an existing conversation and run the next turn. */
+export async function replyConversation(
+  conversationId: string,
+  candidateMessage: string,
+): Promise<ReplyTurnResult> {
+  const { data, error } = await supabase.functions.invoke('conversations', {
+    body: { conversation_id: conversationId, candidate_message: candidateMessage },
+  })
+  if (error) throw new Error(await describeError(error))
+  return data as ReplyTurnResult
 }
 
 /** Fetch a conversation and its messages by id. A missing conversation is an error. */
