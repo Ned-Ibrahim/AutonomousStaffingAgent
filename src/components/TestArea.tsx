@@ -31,6 +31,7 @@ export function TestArea({
   const ready = useMemo(() => companies.filter((c) => configs[c.id]), [companies, configs])
 
   const [companyId, setCompanyId] = useState('')
+  const [recruiter, setRecruiter] = useState('')
   const [name, setName] = useState('')
   const [role, setRole] = useState('')
   const [context, setContext] = useState('')
@@ -47,6 +48,7 @@ export function TestArea({
     setName('')
     setRole('')
     setContext('')
+    setRecruiter('')
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -56,11 +58,15 @@ export function TestArea({
     setLoading(true)
     setError(null)
     try {
-      const res = await startConversation(selectedId, {
-        name: trimmedName,
-        role: role.trim() || null,
-        context: context.trim() || null,
-      })
+      const res = await startConversation(
+        selectedId,
+        {
+          name: trimmedName,
+          role: role.trim() || null,
+          context: context.trim() || null,
+        },
+        recruiter.trim() || null,
+      )
       setResult(res)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the conversation.')
@@ -108,6 +114,20 @@ export function TestArea({
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="label" htmlFor="ta-recruiter">
+          Recruiter name <span className="hint">(optional)</span>
+        </label>
+        <input
+          id="ta-recruiter"
+          className="input"
+          value={recruiter}
+          onChange={(e) => setRecruiter(e.target.value)}
+          placeholder="Who the agent signs as — e.g. Sam Rivera"
+        />
+        <p className="hint">Used to sign the agent's messages. Left blank, it signs as the company.</p>
       </div>
 
       <div className="flex flex-col gap-1.5">

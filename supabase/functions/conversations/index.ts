@@ -1,8 +1,9 @@
 // Conversations Edge Function (Deno). Runs the decision loop for turn 0 — the
 // agent's opening outreach — server-side, where the OpenAI key stays.
-//   POST /conversations { company_id, candidate: { name, role?, context? } }
+//   POST /conversations { company_id, candidate: { name, role?, context? }, recruiter_name? }
 //        -> interpret (decide) -> ground-check -> write -> persist
 //        -> 201 { conversation, message, decision, grounding }
+//   POST /conversations { conversation_id, candidate_message }  -> the next reply turn
 //   GET  /conversations?id=...   -> { conversation, messages } (404 if absent)
 // No message is ever sent to a real channel; it is stored for display only.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -88,6 +89,11 @@ Deno.serve(async (req: Request) => {
       const candidate = parseCandidate(body?.candidate)
       if (!candidate) return json({ error: 'candidate.name is required' }, 400)
 
+      const recruiterName =
+        typeof body?.recruiter_name === 'string' && body.recruiter_name.trim()
+          ? body.recruiter_name.trim()
+          : null
+
       const company = await companies.selectById(companyId)
       if (!company) return json({ error: 'company not found' }, 404)
 
@@ -99,6 +105,7 @@ Deno.serve(async (req: Request) => {
         persona: config.persona,
         agentConfigId: config.id,
         candidate,
+        recruiterName,
       })
       return json(result, 201)
     }

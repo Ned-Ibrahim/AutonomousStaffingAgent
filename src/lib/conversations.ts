@@ -21,9 +21,10 @@ async function describeError(error: unknown): Promise<string> {
 export async function startConversation(
   companyId: string,
   candidate: CandidateInput,
+  recruiterName: string | null = null,
 ): Promise<OpeningTurnResult> {
   const { data, error } = await supabase.functions.invoke('conversations', {
-    body: { company_id: companyId, candidate },
+    body: { company_id: companyId, candidate, recruiter_name: recruiterName },
   })
   if (error) throw new Error(await describeError(error))
   return data as OpeningTurnResult

@@ -105,6 +105,8 @@ export interface Conversation {
   candidate_name: string
   candidate_role: string | null
   candidate_context: string | null
+  /** The recruiter the agent signs as; null = sign as the company, no placeholder. */
+  recruiter_name: string | null
   status: ConversationStatus
   session_state: SessionState | Record<string, never>
 }
@@ -406,10 +408,12 @@ export interface WriteArgs {
   company: CompanyContext
   candidate: CandidateInput
   history: { role: MessageRole; content: string }[]
+  /** Name to sign the message as; null/absent = sign as the company, never a placeholder. */
+  recruiterName?: string | null
 }
 
 function buildWritePrompt(args: WriteArgs): { system: string; user: string; text: true } {
-  const { decision, persona, company, candidate, history } = args
+  const { decision, persona, company, candidate, history, recruiterName } = args
   const turnZero = history.length === 0
 
   const system = [
@@ -440,6 +444,12 @@ function buildWritePrompt(args: WriteArgs): { system: string; user: string; text
     '- If the candidate asks for something not in the context (e.g. comp), do NOT make it up. Say honestly',
     '  that you can connect them with the team / follow up with specifics, and steer back to what you do know.',
     '- Prefer fewer, true sentences over a fuller message padded with invented detail.',
+    '',
+    'SIGN-OFF:',
+    recruiterName
+      ? `- You are ${recruiterName}, a recruiter on the team. When a sign-off suits the tone, close as ${recruiterName} — use this exact name.`
+      : `- Do not add a personal signature. If you close at all, sign as the ${company.name} team.`,
+    '- NEVER output a placeholder signature such as [Your Name], [Recruiter Name], or any bracketed token. If you have no name to sign, do not invent one and do not leave a placeholder.',
     '',
     'Output ONLY the message text the candidate should receive — no preamble, no quotes, no markdown.',
   ].join('\n')
@@ -482,8 +492,9 @@ export function makeMessageWriter(provider: ProviderClient | null): MessageWrite
 }
 
 function genericOpener(args: WriteArgs): string {
-  const { candidate, company } = args
-  return `Hi ${candidate.name}, I'm reaching out on behalf of ${company.name}. We'd love to tell you more about an opportunity that may be a good fit — would you be open to a quick conversation?`
+  const { candidate, company, recruiterName } = args
+  const signoff = recruiterName ? `\n\n— ${recruiterName}` : ''
+  return `Hi ${candidate.name}, I'm reaching out on behalf of ${company.name}. We'd love to tell you more about an opportunity that may be a good fit — would you be open to a quick conversation?${signoff}`
 }
 
 // --- persistence -----------------------------------------------------------
@@ -494,6 +505,7 @@ export interface NewConversation {
   candidate_name: string
   candidate_role: string | null
   candidate_context: string | null
+  recruiter_name: string | null
   status: ConversationStatus
   session_state: SessionState
 }
@@ -554,6 +566,8 @@ export interface OpeningTurnInput {
   persona: Persona
   agentConfigId: string
   candidate: CandidateInput
+  /** Recruiter the agent signs as for this conversation; null = sign as the company. */
+  recruiterName?: string | null
 }
 
 export interface OpeningTurnResult {
@@ -602,7 +616,8 @@ export function makeConversationEngine(deps: {
 }): ConversationEngine {
   const { decisionEngine, messageWriter, port } = deps
   return {
-    async openingTurn({ company, persona, agentConfigId, candidate }) {
+    async openingTurn({ company, persona, agentConfigId, candidate, recruiterName }) {
+      const signAs = recruiterName ?? null
       const bundle: InterpretBundle = {
         company,
         persona,
@@ -612,7 +627,14 @@ export function makeConversationEngine(deps: {
       }
       const decision = await decisionEngine.interpret(bundle)
       const grounding = checkGrounding(decision)
-      const content = await messageWriter.write({ decision, persona, company, candidate, history: [] })
+      const content = await messageWriter.write({
+        decision,
+        persona,
+        company,
+        candidate,
+        history: [],
+        recruiterName: signAs,
+      })
 
       const conversation = await port.insertConversation({
         company_id: company.id,
@@ -620,6 +642,7 @@ export function makeConversationEngine(deps: {
         candidate_name: candidate.name,
         candidate_role: candidate.role,
         candidate_context: candidate.context,
+        recruiter_name: signAs,
         status: decision.status,
         session_state: sessionFromDecision(decision),
       })
@@ -670,6 +693,7 @@ export function makeConversationEngine(deps: {
         company,
         candidate,
         history: [...history, { role: 'candidate', content: candidateMessage }],
+        recruiterName: existing.recruiter_name,
       })
 
       const agentRow = await port.insertMessage({
