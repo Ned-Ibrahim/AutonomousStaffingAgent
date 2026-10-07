@@ -1,44 +1,44 @@
 # Autonomous Staffing Agent
 
-A full-stack web app for creating and running autonomous AI recruiting agents. You capture a company's
-context (identity, culture, the profiles it hires for, tone); the agent configures itself from that
-context — giving itself a personality — then plans and runs a candidate-engagement conversation,
-**reasoning visibly about every step**.
+[![CI](https://github.com/Ned-Ibrahim/AutonomousStaffingAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/Ned-Ibrahim/AutonomousStaffingAgent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Live app:** https://autonomous-staffing-agent.vercel.app
+An AI recruiting agent that configures itself from a company's context, then plans and runs a candidate conversation while showing its reasoning on every turn.
+You enter a company's identity, culture, hiring needs and tone.
+The agent writes its own persona from that, decides the next best action, and only then writes the message.
+It can also decide not to reply: it escalates to a human or stops.
+Nothing is sent to a real channel. Every message and its reasoning are stored for inspection only.
 
-> **What makes it intelligent, and not just an LLM call:** every turn is *two* model calls — the agent
-> first **decides** (a structured `interpret` call that reads the situation and chooses the next-best
-> action, with a grounding self-check) and only then **writes** the message. The decision is shown in a
-> live Reasoning Panel, separate from the words. The agent reasons, commits to an action, checks itself
-> against the company's context, and can choose *not* to act — escalate to a human or stop — rather than
-> always replying.
+**Live demo:** https://autonomous-staffing-agent.vercel.app
 
----
+Every turn is two model calls.
+The first (`interpret`) returns a structured decision: intent, sentiment, known facts versus assumptions, next action, and a grounding self-check.
+The second (`write`) only phrases the action that was already chosen.
+The decision is shown in a Reasoning Panel, separate from the words.
+
 
 ## What it does
 
-1. **Company intake** — capture a company's context: name, one-liner, culture, hiring needs, candidate
-   profiles, recruiting process and goals, preferred tone.
-2. **Personality inference** — one click generates the agent's persona (traits, voice rules, language
+1. Company intake: capture a company's context (name, one-liner, culture, hiring needs, candidate
+   profiles, recruiting process and goals, preferred tone).
+2. Personality inference: one click generates the agent's persona (traits, voice rules, language
    style, boundaries) from that context. Sparse context yields a neutral, low-confidence persona rather
    than fabricated detail; the model's confidence is clamped to what the context actually supports.
-3. **Opening outreach (turn 0)** — point the configured agent at a hypothetical candidate. It plans and
+3. Opening outreach (turn 0): point the configured agent at a hypothetical candidate. It plans and
    writes the opening message, showing its reasoning.
-4. **Multi-turn conversation** — reply as the candidate and watch the agent decide and respond each
+4. Multi-turn conversation: reply as the candidate and watch the agent decide and respond each
    turn. A running **session** (stage, intent, sentiment, engagement, next action, status) is folded
    forward by a pure reducer and shown as a live strip.
 
-Nothing is ever sent to a real channel — every message and its reasoning are stored and shown for
-inspection only. The UI says so explicitly ("Sandbox — nothing sent").
+Nothing is ever sent to a real channel. Every message and its reasoning are stored and shown for
+inspection only. The UI says so explicitly ("Sandbox: nothing sent").
 
----
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-  subgraph Browser["Browser — React + TypeScript (Vite)"]
+  subgraph Browser["Browser: React + TypeScript (Vite)"]
     UI["Company intake · Generate agent · Reasoning Panel · Live chat + session strip"]
   end
 
@@ -52,7 +52,7 @@ flowchart TB
     PG[("Postgres\ncompanies · agent_configs\nconversations · messages")]
   end
 
-  OpenAI["Model provider — OpenAI GPT-4.1\n(behind a swappable ProviderClient)"]
+  OpenAI["Model provider: OpenAI GPT-4.1\n(behind a swappable ProviderClient)"]
 
   UI -->|served from| Static
   UI -->|"supabase-js (anon key)"| EF
@@ -63,7 +63,7 @@ flowchart TB
   class PG store;
 ```
 
-The OpenAI key lives only in Edge Function secrets — it never reaches the browser. The client holds the
+The OpenAI key lives only in Edge Function secrets and never reaches the browser. The client holds the
 Supabase URL + anon key, which are public-safe.
 
 ### Decision flow (per turn)
@@ -77,7 +77,7 @@ Company Context ──▶ Personality Inference ──▶ Agent Configuration
 Candidate Context ──▶ Candidate Reply
         │
         ▼
-  call 1 — INTERPRET (one structured decision):
+  call 1: INTERPRET (one structured decision):
      Intent / Sentiment ──▶ Confidence & Assumption check (known vs. inferred)
         ──▶ Session Update ──▶ Next-Best-Action ──▶ Grounding self-check
         │
@@ -85,17 +85,16 @@ Candidate Context ──▶ Candidate Reply
   Grounding Check (app handling): passed ──▶ proceed · failed/malformed ──▶ withhold + annotate
         │
         ▼
-  call 2 — WRITE: Response Generation (in the company voice, inside its boundaries)
+  call 2: WRITE: Response Generation (in the company voice, inside its boundaries)
         │
         ▼
   Memory Update (session_state folded forward by the SessionReducer)
 ```
 
 `interpret` returns a single structured `AgentDecision` (the contract the Reasoning Panel renders 1:1 and
-that is stored verbatim on each agent message). `write` only phrases the already-decided action — it does
+that is stored verbatim on each agent message). `write` only phrases the already-decided action, it does
 not change it. Two model calls per turn, always: decide first, write second.
 
----
 
 ## Key design decisions
 
@@ -110,41 +109,42 @@ not change it. Two model calls per turn, always: decide first, write second.
   context → the model's confidence is clamped. Known facts are kept separate from inferred assumptions
   throughout.
 - **Provider behind a seam.** All model calls go through a `ProviderClient` interface; swapping vendors
-  is swapping one factory. Tests use a fake provider — no network, deterministic.
+  is swapping one factory. Tests use a fake provider, no network, deterministic.
 - **Deep modules, ports for I/O.** `DecisionEngine`, `MessageWriter`, `GroundingCheck`, `SessionReducer`,
   `PersonalityInference` are pure TypeScript shared by the Edge Function, the frontend types, and the
   tests. Persistence is behind injectable ports (Supabase in production, in-memory in tests).
 - **Secrets server-side only.** Model keys live in Edge Function secrets; the browser only ever sees the
   anon key.
 
----
 
 ## Stack
 
-- **Frontend:** React + TypeScript (Vite), Tailwind CSS, deployed on Vercel.
-- **Backend:** Supabase — Postgres + Edge Functions (Deno). All model calls and business logic run
-  server-side; secrets never reach the client.
-- **Model:** OpenAI GPT-4.1, single model behind a swappable `ProviderClient`.
-- **Tests:** Vitest — pure functions + fake provider/port (68 tests).
-
----
+The frontend is React and TypeScript (Vite) with Tailwind CSS, deployed on Vercel.
+The backend is Supabase: Postgres plus Edge Functions on Deno, so all model calls and business logic run server-side.
+The model is OpenAI GPT-4.1 behind a swappable `ProviderClient`.
+Tests use Vitest against pure functions and a fake provider (71 tests).
 
 ## Local development
 
+Requires Node 20 or newer.
+Tests, lint and build run without any keys:
+
 ```bash
-npm install
-cp .env.example .env   # then fill in your Supabase URL + anon key
+npm ci
+npm test          # 71 Vitest tests, fake provider, no network
+npm run lint
+npm run build     # type-check + production build
+```
+
+To run the UI against a backend you need your own Supabase project with the Edge Functions deployed (see Deploy):
+
+```bash
+cp .env.example .env   # set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 npm run dev
 ```
 
-`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are client-safe. Server-only secrets (service-role key,
-the OpenAI key) live in Edge Function secrets and are never put in `.env`.
-
-```bash
-npm test          # run the test suite (Vitest)
-npm run lint      # eslint
-npm run build     # type-check + production build
-```
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are client-safe.
+Server-only secrets live in Edge Function secrets and never go in `.env`: `OPENAI_API_KEY` (set with `supabase secrets set`), plus `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, which Supabase injects automatically.
 
 ## Deploy
 
@@ -167,8 +167,8 @@ npx vercel            # link the project (first run)
 npx vercel --prod     # deploy
 ```
 
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as Vercel environment variables (Project → Settings
-→ Environment Variables, **Production** scope) and rebuild — Vite inlines `VITE_*` at build time. Build
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as Vercel environment variables (Project, Settings,
+Environment Variables, **Production** scope) and rebuild. Vite inlines `VITE_*` at build time. Build
 command `npm run build`, output `dist` (see `vercel.json`).
 
 ## Project layout
@@ -192,9 +192,13 @@ issues/                    PRD + build-slice specs
 
 Six tracer-bullet slices, each deployed before the next:
 
-1. **Walking skeleton** — frontend → Edge Function → Postgres, live on Vercel + Supabase.
-2. **Company intake** — capture + persist company context.
-3. **Personality inference** — the self-configuring agent persona (with honesty guardrails).
-4. **Initial-outreach chat panel** — turn-0 interpret → write, the Reasoning Panel, grounding check.
-5. **Candidate-reply turn loop** — multi-turn conversation + the SessionReducer.
-6. **This** — README, architecture, final end-to-end verification.
+1. Walking skeleton: frontend → Edge Function → Postgres, live on Vercel + Supabase.
+2. Company intake: capture + persist company context.
+3. Personality inference: the self-configuring agent persona (with honesty guardrails).
+4. Initial-outreach chat panel: turn-0 interpret → write, the Reasoning Panel, grounding check.
+5. Candidate-reply turn loop: multi-turn conversation + the SessionReducer.
+6. This: README, architecture, final end-to-end verification.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
